@@ -233,11 +233,7 @@ buildGroupTabs();
 buildCatsNav();
 render();
 
-/* ---------------- AI Suggestions ---------------- */
-const aiInput = document.getElementById('aiInput');
-const aiButton = document.getElementById('aiButton');
-const aiButtonLabel = document.getElementById('aiButtonLabel');
-const aiResults = document.getElementById('aiResults');
+
 
 document.querySelectorAll('.ai-chip').forEach(chip => {
   chip.addEventListener('click', () => {
@@ -357,3 +353,16 @@ Regras:
     aiButtonLabel.textContent = 'Sugerir receitas';
   }
 }
+
+
+
+// Modelo compacto (aprox. 800MB) para execução via WebGPU no navegador
+const MODEL_NAME = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
+let aiEngine = null;
+
+// Elementos da DOM
+const aiInput = document.getElementById("aiInput");
+const aiButton = document.getElementById("aiButton");
+const aiButtonLabel = document.getElementById("aiButtonLabel");
+const aiResults = document.getElementById("aiResults");
+const aiChips = document.querySelectorAll(".ai-chip");
