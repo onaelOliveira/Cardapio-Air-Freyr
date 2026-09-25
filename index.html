@@ -13,7 +13,7 @@
 
 <header class="top">
   <div class="brand">
-    <h1>Cardápio's </h1>
+    <h1>Cardápio Air Fryer</h1>
     <span class="count" id="totalCount">258 receitas</span>
   </div>
   <p class="sub">Do café da manhã à sobremesa — receitas de Air Fryer, molhos caseiros, temperos, marinadas e sucos detox, tudo em um só lugar.</p>
@@ -25,20 +25,28 @@
     <input type="text" id="searchInput" placeholder="Buscar por nome, ingrediente ou tag (ex: frango, low carb, gengibre)...">
     <button class="clear-btn" id="clearSearch" aria-label="Limpar busca">✕</button>
   </div>
+  <div class="toolbar">
+    <button class="icon-btn" id="favToggleBtn" aria-pressed="false">
+      <span class="star">☆</span> Favoritos <span class="count-badge" id="favCount">0</span>
+    </button>
+    <button class="icon-btn" id="shopListBtn">
+      <span class="cart">🛒</span> Lista de compras <span class="count-badge" id="shopCount">0</span>
+    </button>
+  </div>
 </div>
 
 <div class="group-tabs" id="groupTabs"></div>
 <nav class="cats" id="catsNav"></nav>
 
-<!-- <div class="ai-panel">
+<div class="ai-panel">
   <div class="ai-card">
     <div class="ai-head">
       <div class="badge">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z"></path></svg>
       </div>
-      <h2>Sugestões com IA</h2>
+      <h2>Sugestões com IA (100% offline)</h2>
     </div>
-    <p class="hint">Diga o que você tem na geladeira, quanto tempo quer gastar ou seu objetivo, e a IA escolhe entre receitas, molhos, temperos ou sucos para você.</p>
+    <p class="hint">Roda direto no seu navegador via WebGPU, sem enviar nada para servidor algum. Na primeira vez a IA baixa e fica salva em cache; diga o que você tem na geladeira ou seu objetivo e ela escolhe entre receitas, molhos, temperos ou sucos do cardápio.</p>
     <div class="ai-form">
       <textarea id="aiInput" placeholder="Ex: tenho frango, batata e queijo. Quero algo rápido pro jantar..."></textarea>
       <button id="aiButton">
@@ -53,7 +61,7 @@
     </div>
     <div class="ai-results" id="aiResults"></div>
   </div>
-</div> -->
+</div>
 
 <main>
   <div class="grid-head">
@@ -69,6 +77,10 @@
 
 <div class="overlay" id="overlay">
   <div class="modal" id="modalContent"></div>
+</div>
+
+<div class="overlay" id="shopOverlay">
+  <div class="modal" id="shopModalContent"></div>
 </div>
 
 <footer>Cardápio Air Fryer · receitas, molhos, temperos e sucos</footer>

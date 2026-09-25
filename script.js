@@ -26,6 +26,7 @@ let state = {
   search: '',
   group: 'AIRFRYER',
   category: 'ALL',
+  favoritesOnly: false,
 };
 
 const groupTabsEl = document.getElementById('groupTabs');
@@ -38,8 +39,195 @@ const searchInput = document.getElementById('searchInput');
 const clearSearch = document.getElementById('clearSearch');
 const overlay = document.getElementById('overlay');
 const modalContent = document.getElementById('modalContent');
+const favToggleBtn = document.getElementById('favToggleBtn');
+const favCountEl = document.getElementById('favCount');
+const shopListBtn = document.getElementById('shopListBtn');
+const shopCountEl = document.getElementById('shopCount');
+const shopOverlay = document.getElementById('shopOverlay');
+const shopModalContent = document.getElementById('shopModalContent');
 
 document.getElementById('totalCount').textContent = RECIPES.length + ' receitas';
+
+/* ============================================================
+   FAVORITOS + LISTA DE COMPRAS (persistidos em localStorage)
+============================================================ */
+let favorites = new Set(JSON.parse(localStorage.getItem('cardapio_favorites') || '[]'));
+let shoppingList = JSON.parse(localStorage.getItem('cardapio_shopping') || '[]');
+// shoppingList item: { id, text, recipeTitle, recipeNumber, checked }
+
+function saveFavorites(){
+  localStorage.setItem('cardapio_favorites', JSON.stringify([...favorites]));
+}
+function saveShoppingList(){
+  localStorage.setItem('cardapio_shopping', JSON.stringify(shoppingList));
+}
+
+function updateFavCount(){
+  favCountEl.textContent = favorites.size;
+}
+function updateShopCount(){
+  shopCountEl.textContent = shoppingList.length;
+}
+
+function toggleFavorite(number){
+  if(favorites.has(number)) favorites.delete(number);
+  else favorites.add(number);
+  saveFavorites();
+  updateFavCount();
+
+  // atualiza a estrela no card, se estiver visível na grid
+  const cardBtn = recipeGrid.querySelector(`.fav-btn[data-num="${number}"]`);
+  if(cardBtn){
+    const isFav = favorites.has(number);
+    cardBtn.classList.toggle('active', isFav);
+    cardBtn.textContent = isFav ? '★' : '☆';
+  }
+  // atualiza o botão dentro do modal, se aberto para esse item
+  const modalBtn = document.getElementById('modalFavBtn');
+  if(modalBtn && modalBtn.dataset.num === number){
+    const isFav = favorites.has(number);
+    modalBtn.classList.toggle('active', isFav);
+    modalBtn.innerHTML = isFav ? '★ Favoritado' : '☆ Favoritar';
+  }
+  // se estiver no modo "só favoritos", a lista pode precisar sumir com o item
+  if(state.favoritesOnly) render();
+}
+
+function addRecipeToShoppingList(r){
+  let added = 0;
+  r.ingredients.forEach(ing => {
+    const exists = shoppingList.some(item => item.recipeNumber === r.number && item.text === ing);
+    if(!exists){
+      shoppingList.push({
+        id: r.number + '-' + Math.random().toString(36).slice(2, 9),
+        text: ing,
+        recipeTitle: r.title,
+        recipeNumber: r.number,
+        checked: false,
+      });
+      added++;
+    }
+  });
+  saveShoppingList();
+  updateShopCount();
+  return added;
+}
+
+function removeShoppingItem(id){
+  shoppingList = shoppingList.filter(item => item.id !== id);
+  saveShoppingList();
+  updateShopCount();
+  renderShoppingModal();
+}
+function removeShoppingGroup(recipeNumber){
+  shoppingList = shoppingList.filter(item => item.recipeNumber !== recipeNumber);
+  saveShoppingList();
+  updateShopCount();
+  renderShoppingModal();
+}
+function toggleShoppingChecked(id){
+  const item = shoppingList.find(x => x.id === id);
+  if(item){
+    item.checked = !item.checked;
+    saveShoppingList();
+  }
+}
+function clearShoppingList(){
+  if(shoppingList.length && !confirm('Limpar toda a lista de compras?')) return;
+  shoppingList = [];
+  saveShoppingList();
+  updateShopCount();
+  renderShoppingModal();
+}
+
+function renderShoppingModal(){
+  if(shoppingList.length === 0){
+    shopModalContent.innerHTML = `
+      <button class="close-btn" id="closeShopModal">✕</button>
+      <div class="shop-top"><h2>🛒 Lista de compras</h2></div>
+      <div class="shop-body">
+        <div class="shop-empty">
+          <div class="big">Sua lista está vazia</div>
+          <div>Abra uma receita e clique em "Adicionar à lista de compras".</div>
+        </div>
+      </div>
+    `;
+    document.getElementById('closeShopModal').addEventListener('click', closeShopModal);
+    return;
+  }
+
+  // agrupa os itens por receita
+  const groups = new Map();
+  shoppingList.forEach(item => {
+    if(!groups.has(item.recipeNumber)) groups.set(item.recipeNumber, { title: item.recipeTitle, items: [] });
+    groups.get(item.recipeNumber).items.push(item);
+  });
+
+  const groupsHTML = [...groups.entries()].map(([recipeNumber, g]) => `
+    <div class="shop-group">
+      <div class="shop-group-title">
+        <span>${g.title}</span>
+        <button class="remove-group" data-recipe="${recipeNumber}">remover tudo</button>
+      </div>
+      ${g.items.map(item => `
+        <div class="shop-item ${item.checked ? 'checked' : ''}">
+          <input type="checkbox" data-id="${item.id}" ${item.checked ? 'checked' : ''}>
+          <span class="txt">${item.text}</span>
+          <button class="del-item" data-id="${item.id}" aria-label="Remover">✕</button>
+        </div>
+      `).join('')}
+    </div>
+  `).join('');
+
+  shopModalContent.innerHTML = `
+    <button class="close-btn" id="closeShopModal">✕</button>
+    <div class="shop-top">
+      <h2>🛒 Lista de compras</h2>
+      <button class="shop-clear-btn" id="clearShopBtn">Limpar tudo</button>
+    </div>
+    <div class="shop-body">${groupsHTML}</div>
+  `;
+
+  document.getElementById('closeShopModal').addEventListener('click', closeShopModal);
+  document.getElementById('clearShopBtn').addEventListener('click', clearShoppingList);
+  shopModalContent.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      toggleShoppingChecked(cb.dataset.id);
+      cb.closest('.shop-item').classList.toggle('checked', cb.checked);
+    });
+  });
+  shopModalContent.querySelectorAll('.del-item').forEach(btn => {
+    btn.addEventListener('click', () => removeShoppingItem(btn.dataset.id));
+  });
+  shopModalContent.querySelectorAll('.remove-group').forEach(btn => {
+    btn.addEventListener('click', () => removeShoppingGroup(btn.dataset.recipe));
+  });
+}
+
+function openShopModal(){
+  renderShoppingModal();
+  shopOverlay.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+function closeShopModal(){
+  shopOverlay.classList.remove('show');
+  document.body.style.overflow = '';
+}
+shopOverlay.addEventListener('click', (e) => {
+  if(e.target === shopOverlay) closeShopModal();
+});
+shopListBtn.addEventListener('click', openShopModal);
+
+favToggleBtn.addEventListener('click', () => {
+  state.favoritesOnly = !state.favoritesOnly;
+  favToggleBtn.classList.toggle('active', state.favoritesOnly);
+  favToggleBtn.setAttribute('aria-pressed', String(state.favoritesOnly));
+  favToggleBtn.querySelector('.star').textContent = state.favoritesOnly ? '★' : '☆';
+  render();
+});
+
+updateFavCount();
+updateShopCount();
 
 function buildGroupTabs(){
   groupTabsEl.innerHTML = '';
@@ -78,9 +266,18 @@ function buildCatsNav(){
   });
 }
 
+function exitFavoritesOnly(){
+  if(!state.favoritesOnly) return;
+  state.favoritesOnly = false;
+  favToggleBtn.classList.remove('active');
+  favToggleBtn.setAttribute('aria-pressed', 'false');
+  favToggleBtn.querySelector('.star').textContent = '☆';
+}
+
 groupTabsEl.addEventListener('click', (e) => {
   const btn = e.target.closest('.group-tab');
   if(!btn) return;
+  exitFavoritesOnly();
   state.group = btn.dataset.group;
   state.category = 'ALL';
   document.querySelectorAll('.group-tab').forEach(b => b.classList.remove('active'));
@@ -92,6 +289,7 @@ groupTabsEl.addEventListener('click', (e) => {
 catsNav.addEventListener('click', (e) => {
   const btn = e.target.closest('.cat-pill');
   if(!btn) return;
+  exitFavoritesOnly();
   state.category = btn.dataset.cat;
   document.querySelectorAll('.cat-pill').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
@@ -111,8 +309,12 @@ function matchesSearch(recipe, q){
 function getFiltered(){
   const g = GROUPS[state.group];
   return RECIPES.filter(r => {
-    if(!g.categories.includes(r.category)) return false;
-    if(state.category !== 'ALL' && r.category !== state.category) return false;
+    if(state.favoritesOnly){
+      if(!favorites.has(r.number)) return false;
+    }else{
+      if(!g.categories.includes(r.category)) return false;
+      if(state.category !== 'ALL' && r.category !== state.category) return false;
+    }
     if(!matchesSearch(r, state.search)) return false;
     return true;
   });
@@ -124,8 +326,10 @@ function cardHTML(r){
   if(r.tempo_total) metaBits.push('<span>⏱ ' + r.tempo_total + '</span>');
   if(r.rende) metaBits.push('<span>🍽 ' + r.rende + '</span>');
   if(r.nivel) metaBits.push('<span>' + r.nivel + '</span>');
+  const isFav = favorites.has(r.number);
   return `
     <div class="card" style="--cat-color:${meta.color}" data-num="${r.number}">
+      <button class="fav-btn ${isFav ? 'active' : ''}" data-num="${r.number}" aria-label="Favoritar">${isFav ? '★' : '☆'}</button>
       <span class="cat-tag"><span class="dot"></span>${meta.label}</span>
       <h4>${r.title}</h4>
       <div class="meta">${metaBits.join('')}</div>
@@ -137,12 +341,16 @@ function cardHTML(r){
 function render(){
   const filtered = getFiltered();
   const g = GROUPS[state.group];
-  gridTitle.textContent = state.category === 'ALL' ? g.label : (CATEGORY_META[state.category] ? CATEGORY_META[state.category].label : state.category);
+  gridTitle.textContent = state.favoritesOnly
+    ? 'Favoritos'
+    : (state.category === 'ALL' ? g.label : (CATEGORY_META[state.category] ? CATEGORY_META[state.category].label : state.category));
   resultCount.textContent = filtered.length + (filtered.length === 1 ? ' receita' : ' receitas');
 
   if(filtered.length === 0){
     recipeGrid.style.display = 'none';
     noResults.style.display = 'block';
+    noResults.querySelector('.big').textContent = state.favoritesOnly ? 'Você ainda não tem favoritos' : 'Nenhum item encontrado';
+    noResults.querySelector('div:last-child').textContent = state.favoritesOnly ? 'Clique na estrela de uma receita para favoritá-la.' : 'Tente buscar por outro termo ou limpe os filtros.';
     return;
   }
   recipeGrid.style.display = 'grid';
@@ -151,6 +359,12 @@ function render(){
 }
 
 recipeGrid.addEventListener('click', (e) => {
+  const favBtn = e.target.closest('.fav-btn');
+  if(favBtn){
+    e.stopPropagation();
+    toggleFavorite(favBtn.dataset.num);
+    return;
+  }
   const card = e.target.closest('.card');
   if(!card) return;
   openModal(card.dataset.num);
@@ -165,6 +379,7 @@ function modalHTML(r){
   if(r.nivel) badges.push({ v: r.nivel, l: 'Nível' });
 
   const hasNutrition = r.nutrition && (r.nutrition.kcal || r.nutrition.proteinas || r.nutrition.carboidratos || r.nutrition.gorduras);
+  const isFav = favorites.has(r.number);
 
   return `
     <button class="close-btn" id="closeModal">✕</button>
@@ -174,8 +389,10 @@ function modalHTML(r){
       ${r.description ? `<p class="description">${r.description}</p>` : ''}
       ${badges.length ? `<div class="badges">${badges.map(b => `<div class="b"><span class="v">${b.v}</span><span class="l">${b.l}</span></div>`).join('')}</div>` : ''}
       <div class="tags">${r.tags.map(t => `<span>${t}</span>`).join('')}</div>
+      <button class="modal-fav-btn ${isFav ? 'active' : ''}" id="modalFavBtn" data-num="${r.number}">${isFav ? '★ Favoritado' : '☆ Favoritar'}</button>
     </div>
     <div class="modal-body" style="--cat-color:${meta.color}">
+      <button class="add-shop-btn" id="addShopBtn" data-num="${r.number}">🛒 Adicionar à lista de compras</button>
       <div class="cols">
         <div>
           <h3>Ingredientes</h3>
@@ -205,6 +422,19 @@ function openModal(number){
   overlay.classList.add('show');
   document.body.style.overflow = 'hidden';
   document.getElementById('closeModal').addEventListener('click', closeModal);
+
+  document.getElementById('modalFavBtn').addEventListener('click', () => toggleFavorite(r.number));
+
+  const shopBtn = document.getElementById('addShopBtn');
+  shopBtn.addEventListener('click', () => {
+    const added = addRecipeToShoppingList(r);
+    shopBtn.classList.add('added');
+    shopBtn.textContent = added > 0 ? '✓ Adicionado à lista!' : '✓ Já está na lista';
+    setTimeout(() => {
+      shopBtn.classList.remove('added');
+      shopBtn.textContent = '🛒 Adicionar à lista de compras';
+    }, 1800);
+  });
 }
 function closeModal(){
   overlay.classList.remove('show');
@@ -233,7 +463,213 @@ buildGroupTabs();
 buildCatsNav();
 render();
 
+/* ============================================================
+   IA 100% OFFLINE COM WEBLLM (WebGPU) — Qwen2.5-1.5B-Instruct
+   ============================================================
+   - O modelo roda inteiro no navegador via WebGPU, sem servidor.
+   - Na primeira execução ele é baixado (~1GB) e fica em cache do
+     navegador (Cache Storage); nas próximas vezes carrega local.
+   - Import via CDN dinâmico: não precisa marcar este <script> como
+     type="module", o import() funciona normalmente.
 
+   AJUSTE OBRIGATÓRIO SE PRECISAR:
+   - O catálogo usado abaixo é o array `RECIPES` já carregado no
+     topo deste arquivo. Se o nome/formato do seu catálogo for
+     diferente, ajuste apenas a função buildCatalogListForPrompt()
+     e buildCatalogIndex() logo abaixo — o resto não muda.
+============================================================ */
+
+const aiInput = document.getElementById('aiInput');
+const aiButton = document.getElementById('aiButton');
+const aiButtonLabel = document.getElementById('aiButtonLabel');
+const aiResults = document.getElementById('aiResults');
+
+const WEBLLM_MODEL_ID = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
+
+let webllmEngine = null;   // instância única do motor (singleton)
+let webllmLoading = null;  // Promise em andamento, evita carregar 2x
+
+/* ---- Util: string sem acento/caixa, para comparar nomes com segurança ---- */
+function normalizeText(str){
+  return (str || '')
+    .toString()
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
+
+/* ---- Monta a lista compacta do catálogo que vai dentro do prompt ----
+   << AJUSTE AQUI se RECIPES tiver outro nome de campo para o título >> */
+function buildCatalogListForPrompt(){
+  return RECIPES.map((item, i) => (i + 1) + '. ' + item.title).join('\n');
+}
+
+/* ---- Índice nome-normalizado -> item do catálogo, para validar a resposta ---- */
+function buildCatalogIndex(){
+  const map = new Map();
+  RECIPES.forEach(item => map.set(normalizeText(item.title), item));
+  return map;
+}
+
+/* ---- Carrega o motor WebLLM sob demanda, com progresso no botão ---- */
+async function getWebLLMEngine(){
+  if(webllmEngine) return webllmEngine;
+  if(webllmLoading) return webllmLoading;
+
+  webllmLoading = (async () => {
+    if(!('gpu' in navigator)){
+      throw new Error('este navegador não suporta WebGPU');
+    }
+
+    // Import dinâmico via CDN — funciona mesmo num <script> clássico
+    const webllm = await import('https://esm.run/@mlc-ai/web-llm');
+
+    const engine = await webllm.CreateMLCEngine(WEBLLM_MODEL_ID, {
+      initProgressCallback: (report) => {
+        const pct = Math.round((report.progress || 0) * 100);
+        aiButtonLabel.textContent = pct < 100
+          ? ('Carregando IA... ' + pct + '%')
+          : 'Finalizando...';
+      },
+    });
+
+    webllmEngine = engine;
+    return engine;
+  })();
+
+  return webllmLoading;
+}
+
+/* ---- Prompt do sistema: restringe ao catálogo e força JSON estrito ---- */
+function buildSystemPrompt(){
+  return 'Você é um assistente de cardápio. Você SÓ pode recomendar itens que estão na lista numerada abaixo, copiando o nome EXATAMENTE como está escrito na lista. Nunca invente pratos, molhos, temperos ou sucos que não estejam na lista.\n\n' +
+    'LISTA DE ITENS DISPONÍVEIS:\n' + buildCatalogListForPrompt() + '\n\n' +
+    'REGRAS OBRIGATÓRIAS:\n' +
+    '- Responda SOMENTE com um JSON válido, sem markdown, sem crases, sem texto antes ou depois.\n' +
+    '- Formato exato: {"recomendacoes": ["Nome 1", "Nome 2"], "explicacao": "texto curto"}\n' +
+    '- "recomendacoes" deve ter entre 1 e 3 nomes, copiados EXATAMENTE da lista acima.\n' +
+    '- "explicacao" deve ter no máximo 2 frases, em português.\n' +
+    '- Se nada da lista combinar perfeitamente, escolha os itens mais próximos possíveis mesmo assim.';
+}
+
+/* ---- Parse defensivo do JSON (tira crases/markdown se vierem) ---- */
+function safeParseJSON(text){
+  let cleaned = text.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+  try{
+    return JSON.parse(cleaned);
+  }catch(err){
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if(match){
+      try{ return JSON.parse(match[0]); }catch(e){ return null; }
+    }
+    return null;
+  }
+}
+
+/* ---- Renderiza os cards de sugestão + clique preenche a busca da grid ---- */
+function renderWebLLMResults(items, explicacao, question){
+  if(items.length === 0){
+    aiResults.innerHTML = '<div class="ai-error">A IA não encontrou nada no catálogo para "' + escapeHTML(question) + '". Tente descrever de outro jeito.</div>';
+    return;
+  }
+
+  aiResults.innerHTML = `
+    <p class="ai-note">${escapeHTML(explicacao)}</p>
+    <div class="sugg-grid">
+      ${items.map(item => {
+        const meta = CATEGORY_META[item.category] || {};
+        return `
+          <div class="sugg-card" data-nome="${escapeHTML(item.title)}" data-num="${item.number}">
+            <h5>${escapeHTML(item.title)}</h5>
+            <div class="meta">${meta.label || item.category}${item.tempo_total ? ' · ' + item.tempo_total : ''}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  aiResults.querySelectorAll('.sugg-card').forEach(card => {
+    card.addEventListener('click', () => {
+      // Preenche a busca principal do cardápio com o nome do prato,
+      // reaproveitando o filtro que já existe na grid (#searchInput).
+      searchInput.value = card.dataset.nome;
+      state.search = card.dataset.nome;
+      clearSearch.classList.add('show');
+
+      // também troca para o grupo/categoria certos e abre o modal do item
+      const rec = RECIPES.find(x => x.number === card.dataset.num);
+      if(rec){
+        exitFavoritesOnly();
+        for(const gk of GROUP_ORDER){
+          if(GROUPS[gk].categories.includes(rec.category)){ state.group = gk; break; }
+        }
+        state.category = 'ALL';
+        buildGroupTabs();
+        buildCatsNav();
+      }
+      render();
+      openModal(card.dataset.num);
+      searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+}
+
+function escapeHTML(str){
+  const div = document.createElement('div');
+  div.textContent = str == null ? '' : str;
+  return div.innerHTML;
+}
+
+/* ---- Fluxo principal: carrega o modelo (se preciso) e faz a pergunta ---- */
+async function askAI(){
+  const question = aiInput.value.trim();
+  if(!question) return;
+
+  aiButton.disabled = true;
+  aiResults.classList.add('show');
+  aiResults.innerHTML = '<div class="ai-loading"><span class="spinner"></span> Preparando IA local...</div>';
+
+  try{
+    const engine = await getWebLLMEngine();
+
+    aiButtonLabel.textContent = 'Pensando...';
+    aiResults.innerHTML = '<div class="ai-loading"><span class="spinner"></span> Consultando o catálogo...</div>';
+
+    const messages = [
+      { role: 'system', content: buildSystemPrompt() },
+      { role: 'user', content: question },
+    ];
+
+    const reply = await engine.chat.completions.create({
+      messages,
+      temperature: 0.4,
+      max_tokens: 300,
+    });
+
+    const raw = (reply.choices && reply.choices[0] && reply.choices[0].message.content || '').trim();
+    const parsed = safeParseJSON(raw);
+
+    if(!parsed || !Array.isArray(parsed.recomendacoes)){
+      throw new Error('a IA não retornou um JSON válido');
+    }
+
+    // Restrição estrita: só aceita nomes que existem de fato no catálogo.
+    const catalogIndex = buildCatalogIndex();
+    const validos = parsed.recomendacoes
+      .map(nome => catalogIndex.get(normalizeText(nome)))
+      .filter(Boolean)
+      .slice(0, 3);
+
+    renderWebLLMResults(validos, parsed.explicacao || '', question);
+
+  }catch(err){
+    const dica = ('gpu' in navigator) ? 'Tente novamente em instantes.' : 'Seu navegador pode não suportar WebGPU (use Chrome/Edge atualizados).';
+    aiResults.innerHTML = '<div class="ai-error">Não foi possível usar a IA local agora (' + err.message + '). ' + dica + '</div>';
+  }finally{
+    aiButton.disabled = false;
+    aiButtonLabel.textContent = 'Sugerir receitas';
+  }
+}
 
 document.querySelectorAll('.ai-chip').forEach(chip => {
   chip.addEventListener('click', () => {
@@ -249,120 +685,3 @@ aiInput.addEventListener('keydown', (e) => {
     askAI();
   }
 });
-
-function compactRecipeList(){
-  return RECIPES.map(r =>
-    r.number + '|' + r.title + '|' + r.category + '|' + r.tags.join(',') + '|' + (r.tempo_total||'') + '|' + (r.nivel||'')
-  ).join('\n');
-}
-
-async function askAI(){
-  const q = aiInput.value.trim();
-  if(!q) return;
-
-  aiButton.disabled = true;
-  aiButtonLabel.textContent = 'Pensando...';
-  aiResults.classList.add('show');
-  aiResults.innerHTML = '<div class="ai-loading"><span class="spinner"></span> Buscando as melhores receitas para você...</div>';
-
-  try{
-    const systemPrompt = `Você é um assistente de culinária que recomenda receitas de um cardápio fixo com ${RECIPES.length} itens: receitas de Air Fryer, molhos caseiros, temperos e marinadas, e sucos detox.
-Abaixo está a lista completa, uma por linha, no formato:
-numero|titulo|categoria|tags|tempo_total|nivel
-
-${compactRecipeList()}
-
-Regras:
-- Recomende APENAS itens que estão na lista acima, usando o número exato deles.
-- Escolha entre 3 e 5 itens que melhor atendem ao pedido do usuário.
-- Responda APENAS em JSON válido, sem markdown, sem crases, sem texto antes ou depois, no formato exato:
-{"suggestions":[{"number":"001","reason":"motivo curto de 1 frase em português explicando por que esse item combina com o pedido"}]}`;
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [
-          { role: "user", content: q }
-        ],
-      })
-    });
-
-    if(!response.ok){
-      throw new Error('Falha na requisição (' + response.status + ')');
-    }
-
-    const data = await response.json();
-    const textBlocks = (data.content || []).filter(b => b.type === 'text').map(b => b.text);
-    let raw = textBlocks.join('\n').trim();
-    raw = raw.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
-
-    let parsed;
-    try{
-      parsed = JSON.parse(raw);
-    }catch(err){
-      throw new Error('Não consegui interpretar a resposta da IA.');
-    }
-
-    const suggestions = (parsed.suggestions || [])
-      .map(s => ({ recipe: RECIPES.find(r => r.number === s.number), reason: s.reason }))
-      .filter(s => s.recipe);
-
-    if(suggestions.length === 0){
-      aiResults.innerHTML = '<div class="ai-error">A IA não encontrou itens para esse pedido. Tente descrever de outra forma.</div>';
-      return;
-    }
-
-    aiResults.innerHTML = `
-      <p class="ai-note">Sugestões para: "${q.replace(/</g,'&lt;')}"</p>
-      <div class="sugg-grid">
-        ${suggestions.map(s => {
-          const meta = CATEGORY_META[s.recipe.category] || {};
-          return `
-            <div class="sugg-card" data-num="${s.recipe.number}">
-              <h5>${s.recipe.title}</h5>
-              <p class="why">${s.reason || ''}</p>
-              <div class="meta">${meta.label || s.recipe.category}${s.recipe.tempo_total ? ' · ' + s.recipe.tempo_total : ''}</div>
-            </div>
-          `;
-        }).join('')}
-      </div>
-    `;
-
-    aiResults.querySelectorAll('.sugg-card').forEach(card => {
-      card.addEventListener('click', () => {
-        // switch to the right group/category so the card is visible in the grid too
-        const rec = RECIPES.find(x => x.number === card.dataset.num);
-        if(rec){
-          for(const gk of GROUP_ORDER){
-            if(GROUPS[gk].categories.includes(rec.category)){ state.group = gk; break; }
-          }
-          state.category = 'ALL';
-        }
-        openModal(card.dataset.num);
-      });
-    });
-
-  }catch(err){
-    aiResults.innerHTML = '<div class="ai-error">Não foi possível obter sugestões agora (' + err.message + '). Tente novamente em instantes.</div>';
-  }finally{
-    aiButton.disabled = false;
-    aiButtonLabel.textContent = 'Sugerir receitas';
-  }
-}
-
-
-
-// Modelo compacto (aprox. 800MB) para execução via WebGPU no navegador
-const MODEL_NAME = "Qwen2.5-1.5B-Instruct-q4f16_1-MLC";
-let aiEngine = null;
-
-// Elementos da DOM
-const aiInput = document.getElementById("aiInput");
-const aiButton = document.getElementById("aiButton");
-const aiButtonLabel = document.getElementById("aiButtonLabel");
-const aiResults = document.getElementById("aiResults");
-const aiChips = document.querySelectorAll(".ai-chip");
