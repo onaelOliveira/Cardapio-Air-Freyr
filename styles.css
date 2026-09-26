@@ -279,27 +279,39 @@ header.top p.sub{
 }
 .shop-item{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   gap:10px;
-  padding: 8px 0;
+  padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
 .shop-item:last-child{ border-bottom:none; }
 .shop-item input[type="checkbox"]{
   width:18px; height:18px;
+  margin-top: 2px;
   accent-color: var(--herb);
   flex-shrink:0;
   cursor:pointer;
 }
-.shop-item .txt{
+.shop-item-text{
   flex:1;
-  font-size: 14px;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.shop-item .txt{
+  font-size: 14.5px;
   color: var(--ink);
+  font-weight: 500;
+}
+.shop-item .source{
+  font-size: 11.5px;
+  color: var(--ink-soft);
 }
 .shop-item.checked .txt{
   text-decoration: line-through;
   color: var(--ink-soft);
 }
+.shop-item.checked .source{ opacity: .6; }
 .shop-item .del-item{
   border:none;
   background:none;
